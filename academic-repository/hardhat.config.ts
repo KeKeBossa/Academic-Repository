@@ -1,54 +1,44 @@
-import type { HardhatUserConfig } from "hardhat/config";
-import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
-import { configVariable } from "hardhat/config";
+import { HardhatUserConfig } from 'hardhat/config';
+import '@nomicfoundation/hardhat-toolbox';
+import 'dotenv/config';
 
-// Configuration for HardhatUserConfig properties
+const { SEPOLIA_RPC_URL, SEPOLIA_PRIVATE_KEY, POLYGON_AMOY_RPC_URL, POLYGON_AMOY_PRIVATE_KEY } =
+  process.env;
+
 const config: HardhatUserConfig = {
-  plugins: [hardhatToolboxViemPlugin],
   solidity: {
-    profiles: {
-      default: {
-        version: "0.8.20", 
-      },
-      production: {
-        version: "0.8.20", 
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 200,
-          },
-        },
-      },
-    },
+    version: '0.8.23',
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200
+      }
+    }
   },
+  defaultNetwork: 'hardhat',
   networks: {
-    hardhatMainnet: {
-      type: "edr-simulated",
-      chainType: "l1",
-    },
-    hardhatOp: {
-      type: "edr-simulated",
-      chainType: "op",
-    },
+    hardhat: {},
     sepolia: {
-      type: "http",
-      chainType: "l1",
-      url: configVariable("SEPOLIA_RPC_URL"),
-      accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
+      url: SEPOLIA_RPC_URL || '',
+      accounts: SEPOLIA_PRIVATE_KEY ? [SEPOLIA_PRIVATE_KEY] : []
     },
+    polygonAmoy: {
+      url: POLYGON_AMOY_RPC_URL || '',
+      accounts: POLYGON_AMOY_PRIVATE_KEY ? [POLYGON_AMOY_PRIVATE_KEY] : []
+    }
   },
-} as const;
-
-// Configuration for the Mocha test runner (declared separately for type safety)
-const mochaConfig = {
-  mocha: {
-    timeout: 40000, 
-    spec: ["./test/**/*.ts"], 
-    require: ["ts-node/register"], 
+  paths: {
+    sources: './contracts',
+    tests: './test',
+    cache: './cache',
+    artifacts: './artifacts'
+  },
+  etherscan: {
+    apiKey: {
+      sepolia: process.env.ETHERSCAN_API_KEY || '',
+      polygonAmoy: process.env.POLYGONSCAN_API_KEY || ''
+    }
   }
-} as const;
+};
 
-// ⬇️ 修正箇所: 結合したオブジェクトを変数に代入してからエクスポートします ⬇️
-const hardhatConfig = { ...config, ...mochaConfig };
-
-export default hardhatConfig;
+export default config;

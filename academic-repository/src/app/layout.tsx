@@ -1,24 +1,17 @@
-// app/layout.tsx
-import './globals.css'; // Tailwind CSS のインポート (通常は既に存在)
-import { Inter } from 'next/font/google'; // フォントのインポート (通常は既に存在)
-import { Providers } from './providers'; // 作成したProvidersをインポート
+import type { Metadata } from 'next';
+import './globals.css';
+import Providers from './providers';
 
-const inter = Inter({ subsets: ['latin'] }); // フォントの定義 (通常は既に存在)
-
-export const metadata = {
-  title: '学術活動活性化プラットフォーム', // ここにアプリのタイトル
-  description: 'ブロックチェーンを活用した学術プラットフォーム', // ここにアプリの説明
+export const metadata: Metadata = {
+  title: 'Academic Blockchain Repository',
+  description: '分散型学術リポジトリで研究成果の共有とDAOガバナンスを実現するプラットフォーム'
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ja">
-      <body className={inter.className}>
-        <Providers>{children}</Providers> {/* Providersでアプリケーションをラップ */}
+      <body>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
