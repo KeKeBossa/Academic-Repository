@@ -10,12 +10,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ja">
-      <body className="min-h-screen bg-slate-950 font-sans text-slate-100 antialiased">
+      <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <Providers>
-          <div className="relative isolate flex min-h-screen flex-col">
-            <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[480px] bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.22)_0%,_rgba(15,23,42,0)_70%)]" />
-            {children}
-          </div>
+          <div className="flex min-h-screen flex-col">{children}</div>
         </Providers>
       </body>
     </html>

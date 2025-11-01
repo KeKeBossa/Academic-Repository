@@ -1,194 +1,465 @@
 'use client';
 
-import { ConnectButton } from '@rainbow-me/rainbowkit';
-import ActivityFeedPanel from './components/ActivityFeedPanel';
-import AdminDashboardPanel from './components/AdminDashboardPanel';
-import AssetWorkflowPanel from './components/AssetWorkflowPanel';
-import CollaborationPanel from './components/CollaborationPanel';
-import DidAuthPanel from './components/DidAuthPanel';
-import NotificationsPanel from './components/NotificationsPanel';
+import { useEffect, useMemo, useState } from 'react';
+import { useAccount, useDisconnect } from 'wagmi';
+import { useConnectModal } from '@rainbow-me/rainbowkit';
+import type { LucideIcon } from 'lucide-react';
+import {
+  Home,
+  FileText,
+  Users,
+  Briefcase,
+  Vote,
+  User,
+  Wallet,
+  Search as SearchIcon,
+  Bell,
+  Settings as SettingsIcon,
+  Shield,
+  BookOpen,
+  TrendingUp,
+  Award
+} from 'lucide-react';
 
-const features = [
-  {
-    title: 'ウォレット & DID 認証',
-    description:
-      'MetaMask などのウォレット接続と DID 署名でアクセスを制御し、学生証 VC で資格を証明します。'
-  },
-  {
-    title: 'DAO ガバナンス',
-    description:
-      '提案〜投票〜実行までを一元管理し、役割に応じた投票重みとタイムロックを備えた意思決定を実現。'
-  },
-  {
-    title: '研究資産の共有',
-    description:
-      'IPFS に保管した論文やデータを CID で追跡し、DAO メンバーによるレビューとコメントを促します。'
-  },
-  {
-    title: '共同研究の促進',
-    description:
-      '募集掲示板とアクティビティフィードが最新の研究トピックを可視化し、ラボ間連携を加速します。'
-  }
-];
+import { Dashboard } from './components/academia/Dashboard';
+import { Repository } from './components/academia/Repository';
+import { Seminars } from './components/academia/Seminars';
+import { Projects } from './components/academia/Projects';
+import { Governance } from './components/academia/Governance';
+import { Profile } from './components/academia/Profile';
+import { Notifications as NotificationsPanel } from './components/academia/Notifications';
+import { NotificationPopup } from './components/academia/NotificationPopup';
+import { Search as SearchPanel } from './components/academia/Search';
+import { Settings as SettingsPanel } from './components/academia/Settings';
+import { Button } from './components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from './components/ui/avatar';
+import { Input } from './components/ui/input';
+import { Badge } from './components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from './components/ui/popover';
+import { Toaster } from './components/ui/sonner';
+import { cn } from './components/ui/utils';
 
-const checkpoints = [
-  { label: '接続可能ウォレット', value: 'EVM × Solana' },
-  { label: '対応 VC', value: '学生証 / 研究者証' },
-  { label: 'データ保持', value: 'IPFS + Supabase' }
+type TabType =
+  | 'dashboard'
+  | 'repository'
+  | 'seminars'
+  | 'projects'
+  | 'governance'
+  | 'profile'
+  | 'search'
+  | 'notifications'
+  | 'settings';
+
+type NotificationType =
+  | 'proposal'
+  | 'project'
+  | 'paper'
+  | 'seminar'
+  | 'comment'
+  | 'achievement'
+  | 'system';
+
+interface Notification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  actionUrl?: string;
+  actionLabel?: string;
+  metadata?: {
+    proposalId?: string;
+    projectName?: string;
+    paperTitle?: string;
+    userName?: string;
+  };
+}
+
+const navItems: { value: TabType; label: string; icon: LucideIcon }[] = [
+  { value: 'dashboard', label: 'ダッシュボード', icon: Home },
+  { value: 'notifications', label: 'お知らせ', icon: Bell },
+  { value: 'search', label: '検索', icon: SearchIcon },
+  { value: 'repository', label: '研究レポジトリ', icon: FileText },
+  { value: 'seminars', label: 'ゼミ・研究室', icon: Users },
+  { value: 'projects', label: '共同研究', icon: Briefcase },
+  { value: 'governance', label: 'ガバナンス', icon: Vote },
+  { value: 'profile', label: 'プロフィール', icon: User }
 ];
 
 export default function HomePage() {
+  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [isWalletConnected, setIsWalletConnected] = useState(false);
+  const [userDID, setUserDID] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [notificationPopupOpen, setNotificationPopupOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([
+    {
+      id: '1',
+      type: 'proposal',
+      title: '新しいDAO提案が投稿されました',
+      message: '「研究費配分の最適化アルゴリズム」への投票が開始されました。投票期限は3日後です。',
+      timestamp: '5分前',
+      read: false,
+      actionLabel: '投票する',
+      metadata: {
+        proposalId: 'PROP-2024-003'
+      }
+    },
+    {
+      id: '2',
+      type: 'project',
+      title: 'プロジェクトへの招待',
+      message: '佐藤研究室があなたを「量子暗号通信の実用化研究」プロジェクトに招待しました。',
+      timestamp: '1時間前',
+      read: false,
+      actionLabel: '確認する',
+      metadata: {
+        projectName: '量子暗号通信の実用化研究'
+      }
+    },
+    {
+      id: '3',
+      type: 'paper',
+      title: 'あなたの論文が引用されました',
+      message: '山田花子氏の論文「分散台帳技術の教育応用」があなたの論文を引用しました。',
+      timestamp: '3時間前',
+      read: false,
+      actionLabel: '詳細を見る',
+      metadata: {
+        paperTitle: '分散台帳技術の教育応用',
+        userName: '山田花子'
+      }
+    },
+    {
+      id: '4',
+      type: 'comment',
+      title: '新しいコメントが投稿されました',
+      message: '鈴木一郎氏があなたの論文にコメントしました。',
+      timestamp: '5時間前',
+      read: true,
+      actionLabel: 'コメントを見る',
+      metadata: {
+        userName: '鈴木一郎',
+        paperTitle: 'ブロックチェーンガバナンスモデル'
+      }
+    },
+    {
+      id: '5',
+      type: 'proposal',
+      title: '投票が終了しました',
+      message: '「新規セミナー開催予算案」の投票が終了しました。賛成多数で可決されました。',
+      timestamp: '1日前',
+      read: true,
+      actionLabel: '結果を見る',
+      metadata: {
+        proposalId: 'PROP-2024-002'
+      }
+    },
+    {
+      id: '6',
+      type: 'seminar',
+      title: 'ゼミ活動の更新',
+      message: '佐藤研究室が新しい研究発表会を2024年11月15日に開催します。',
+      timestamp: '1日前',
+      read: true,
+      actionLabel: '詳細を見る'
+    },
+    {
+      id: '7',
+      type: 'achievement',
+      title: 'レピュテーションスコアが上昇しました',
+      message:
+        'あなたの論文が10回引用されました。レピュテーションスコアが+50ポイント上昇しました。',
+      timestamp: '2日前',
+      read: true
+    },
+    {
+      id: '8',
+      type: 'project',
+      title: 'プロジェクトが完了しました',
+      message:
+        '「AI倫理ガイドライン策定」プロジェクトが正常に完了しました。成果物がブロックチェーンに記録されました。',
+      timestamp: '3日前',
+      read: true,
+      actionLabel: '成果を見る',
+      metadata: {
+        projectName: 'AI倫理ガイドライン策定'
+      }
+    },
+    {
+      id: '9',
+      type: 'system',
+      title: 'システムメンテナンスのお知らせ',
+      message:
+        '2024年11月1日 2:00-4:00にシステムメンテナンスを実施します。この間、一部機能が利用できません。',
+      timestamp: '5日前',
+      read: true
+    }
+  ]);
+  const { address, chainId, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
+  const { openConnectModal } = useConnectModal();
+
+  useEffect(() => {
+    setIsWalletConnected(isConnected);
+  }, [isConnected]);
+
+  useEffect(() => {
+    if (!address) {
+      setUserDID('');
+      return;
+    }
+
+    const trimmed = `${address.slice(0, 6)}...${address.slice(-4)}`;
+    setUserDID(`did:ethr:${trimmed}`);
+  }, [address, chainId]);
+
+  const displayAddress = useMemo(() => {
+    if (!address) return '';
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  }, [address]);
+
+  const unreadCount = useMemo(
+    () => notifications.filter((notification) => !notification.read).length,
+    [notifications]
+  );
+
+  const markAsRead = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((notification) =>
+        notification.id === id ? { ...notification, read: true } : notification
+      )
+    );
+  };
+
+  const deleteNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((notification) => notification.id !== id));
+  };
+
+  const markAllAsRead = () => {
+    setNotifications((prev) => prev.map((notification) => ({ ...notification, read: true })));
+  };
+
+  const deleteAllRead = () => {
+    setNotifications((prev) => prev.filter((notification) => !notification.read));
+  };
+
+  const handleConnectWallet = () => {
+    if (openConnectModal) {
+      openConnectModal();
+    }
+  };
+
+  const handleDisconnectWallet = () => {
+    disconnect();
+    setIsWalletConnected(false);
+    setUserDID('');
+  };
+
+  if (!isWalletConnected) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4">
+        <div className="w-full max-w-md">
+          <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-xl">
+            <div className="mb-8 text-center">
+              <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600">
+                <Shield className="h-8 w-8 text-white" />
+              </div>
+              <h1 className="mb-2 type-stat-md text-gray-900">AcademiaChain</h1>
+              <p className="text-gray-600">分散ID認証による学術研究プラットフォーム</p>
+            </div>
+
+            <div className="mb-6 space-y-4">
+              <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <BookOpen className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
+                <div>
+                  <div className="mb-1 text-blue-900">学術レポジトリ</div>
+                  <p className="type-small text-blue-700">
+                    ブロックチェーンで研究成果を永続的に記録
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl border border-purple-100 bg-purple-50 p-4">
+                <Users className="mt-0.5 h-5 w-5 flex-shrink-0 text-purple-600" />
+                <div>
+                  <div className="mb-1 text-purple-900">ゼミ間交流</div>
+                  <p className="type-small text-purple-700">研究グループと共同研究を促進</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl border border-indigo-100 bg-indigo-50 p-4">
+                <Vote className="mt-0.5 h-5 w-5 flex-shrink-0 text-indigo-600" />
+                <div>
+                  <div className="mb-1 text-indigo-900">DAOガバナンス</div>
+                  <p className="type-small text-indigo-700">学術コミュニティの意思決定に参加</p>
+                </div>
+              </div>
+            </div>
+
+            <Button
+              onClick={handleConnectWallet}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              size="lg"
+            >
+              <Wallet className="mr-2 h-5 w-5" />
+              ウォレットを接続
+            </Button>
+
+            <p className="mt-4 text-center type-small text-gray-500">分散IDでセキュアに認証</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return <Dashboard />;
+      case 'repository':
+        return <Repository />;
+      case 'seminars':
+        return <Seminars />;
+      case 'projects':
+        return <Projects />;
+      case 'governance':
+        return <Governance />;
+      case 'profile':
+        return <Profile />;
+      case 'search':
+        return <SearchPanel initialQuery={searchQuery} onQueryChange={setSearchQuery} />;
+      case 'notifications':
+        return (
+          <NotificationsPanel
+            notifications={notifications}
+            onMarkAsRead={markAsRead}
+            onDeleteNotification={deleteNotification}
+            onMarkAllAsRead={markAllAsRead}
+            onDeleteAllRead={deleteAllRead}
+          />
+        );
+      case 'settings':
+        return <SettingsPanel />;
+      default:
+        return null;
+    }
+  };
+
   return (
-    <main className="flex-1">
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.18)_0%,_rgba(15,23,42,0)_70%)]" />
-        <div className="mx-auto max-w-6xl px-6 pb-24 pt-24">
-          <div className="grid gap-12 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="space-y-8">
-              <div className="inline-flex items-center gap-2 rounded-full border border-indigo-400/40 bg-indigo-500/15 px-4 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-indigo-200">
-                Academic DAO Platform
+    <div className="min-h-screen bg-white">
+      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-8">
+            <div
+              className="flex cursor-pointer items-center gap-2 transition-opacity hover:opacity-80"
+              onClick={() => setActiveTab('dashboard')}
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600">
+                <Shield className="h-5 w-5 text-white" />
               </div>
-              <h1 className="text-4xl font-semibold leading-tight text-slate-50 sm:text-5xl">
-                学術成果を DAO ガバナンスで加速させる分散型リポジトリ
-              </h1>
-              <p className="max-w-2xl text-lg leading-relaxed text-slate-300">
-                ウォレット連携と Verifiable Credential
-                で信頼性を担保し、研究成果の登録からレビュー、共同研究募集までを 1
-                つの画面で運用できます。Polygon Amoy 互換のスマートコントラクトと Tailwind ベースの
-                Next.js UI で、研究拠点間の連携をセキュアに支援します。
-              </p>
-              <div className="flex flex-wrap items-center gap-4">
-                <ConnectButton label="ウォレットを接続" />
-                <a
-                  href="#features"
-                  className="inline-flex items-center justify-center rounded-xl border border-slate-600/70 px-5 py-2.5 text-sm font-semibold text-slate-100 transition hover:border-slate-400/80 hover:bg-slate-800/70"
+              <span className="text-gray-900">AcademiaChain</span>
+            </div>
+            <div className="relative hidden md:flex">
+              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+              <Input
+                placeholder="研究論文、ゼミ、プロジェクトを検索..."
+                className="w-96 pl-10"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && searchQuery.trim()) {
+                    setActiveTab('search');
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <Popover open={notificationPopupOpen} onOpenChange={setNotificationPopupOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative">
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs text-white">
+                      {unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end" sideOffset={8}>
+                <NotificationPopup
+                  notifications={notifications}
+                  onMarkAsRead={markAsRead}
+                  onMarkAllAsRead={markAllAsRead}
+                  onViewAll={() => {
+                    setActiveTab('notifications');
+                    setNotificationPopupOpen(false);
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
+            <Button variant="ghost" size="icon" onClick={() => setActiveTab('settings')}>
+              <SettingsIcon className="h-5 w-5" />
+            </Button>
+            <div className="flex items-center gap-3 border-l border-gray-200 pl-4">
+              <div className="hidden text-right sm:block">
+                <div className="type-small text-gray-900">{displayAddress || '接続中'}</div>
+                <div className="type-xs text-gray-500">{userDID}</div>
+              </div>
+              <Avatar>
+                <AvatarImage alt="wallet avatar" />
+                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
+                  {displayAddress ? displayAddress.slice(2, 4) : 'ID'}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleDisconnectWallet}>
+              切断
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex">
+        <aside className="sticky top-16 hidden min-h-[calc(100vh-4rem)] w-64 border-r border-gray-200 bg-white lg:block">
+          <nav className="space-y-1 p-4">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const showUnread = item.value === 'notifications' && unreadCount > 0;
+              return (
+                <button
+                  key={item.value}
+                  onClick={() => setActiveTab(item.value)}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors',
+                    activeTab === item.value
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  )}
                 >
-                  プロダクト概要を見る
-                </a>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {checkpoints.map((item) => (
-                  <div
-                    key={item.label}
-                    className="rounded-2xl border border-slate-800/60 bg-slate-900/60 px-4 py-3 text-sm text-slate-200"
-                  >
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                      {item.label}
-                    </p>
-                    <p className="mt-2 text-base font-semibold text-indigo-200">{item.value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex flex-col justify-end">
-              <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6 shadow-2xl">
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  ハイライト
-                </p>
-                <ul className="mt-4 space-y-4 text-sm text-slate-200">
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 h-2 w-2 rounded-full bg-indigo-400" />
-                    DID 認証、IPFS 連携、DAO 投票、募集掲示板までの MVP コンポーネントを搭載。
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 h-2 w-2 rounded-full bg-indigo-400" />
-                    Tailwind + RainbowKit に移行し、Chakra 依存を排除した軽量 UI 基盤。
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 h-2 w-2 rounded-full bg-indigo-400" />
-                    Hardhat / Prisma / Supabase の統一 TypeScript スタックでスムーズな開発体験。
-                  </li>
-                </ul>
-              </div>
+                  <Icon className="h-5 w-5" />
+                  <span className="flex flex-1 items-center justify-between">
+                    {item.label}
+                    {showUnread && <Badge className="bg-red-600 text-white">{unreadCount}</Badge>}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+          <div className="p-4">
+            <div className="rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 p-4 text-white">
+              <Award className="mb-2 h-8 w-8" />
+              <div className="mb-1">レピュテーション</div>
+              <div className="mb-2 type-stat-md">1,247</div>
+              <p className="type-small text-blue-100">研究貢献スコア</p>
             </div>
           </div>
-        </div>
-      </section>
+        </aside>
 
-      <section id="features" className="border-t border-slate-800/60 bg-slate-950/60">
-        <div className="mx-auto max-w-6xl px-6 pb-20 pt-16">
-          <div className="grid gap-6 sm:grid-cols-2">
-            {features.map((feature) => (
-              <div
-                key={feature.title}
-                className="rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6 shadow-sm transition hover:border-indigo-500/40 hover:bg-slate-900/70"
-              >
-                <p className="text-sm font-semibold text-indigo-200">{feature.title}</p>
-                <p className="mt-3 text-sm leading-6 text-slate-300">{feature.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-6xl space-y-16 px-6 pb-24 pt-12">
-        <div className="space-y-6">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-300/80">
-              Authentication
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-100">DID 認証デモ</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              ウォレット署名から VC 検証までのフローを UI 上で確認できます。
-            </p>
-          </div>
-          <DidAuthPanel />
-        </div>
-
-        <div className="space-y-6">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-              Assets
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-100">研究資産ワークフロー</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              IPFS アップロード、DAO 紐付け、レビューの登録をシナリオ形式で操作できます。
-            </p>
-          </div>
-          <AssetWorkflowPanel />
-        </div>
-
-        <div className="space-y-6">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-300/80">
-              Collaboration
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-100">共同研究募集</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              募集投稿の作成、スキルフィルター、ステータス管理を UI で体験できます。
-            </p>
-          </div>
-          <CollaborationPanel />
-        </div>
-
-        <div className="grid gap-12 lg:grid-cols-2">
-          <div className="space-y-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-300/80">
-              Activity
-            </p>
-            <ActivityFeedPanel />
-          </div>
-          <div className="space-y-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300/80">
-              Alerts
-            </p>
-            <NotificationsPanel />
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-300/80">
-              Operations
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-100">管理ダッシュボード</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              提案・研究資産・募集投稿などのメトリクスを集約し、最新のアクティビティをモニタリングします。
-            </p>
-          </div>
-          <AdminDashboardPanel />
-        </div>
-      </section>
-    </main>
+        <main className="flex-1 p-4 sm:p-6">{renderTabContent()}</main>
+      </div>
+      <Toaster />
+    </div>
   );
 }
